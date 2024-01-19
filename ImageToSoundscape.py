@@ -1,49 +1,57 @@
 import numpy as np
+from AudioData import AudioData
 from scipy.io.wavfile import write
 from scipy.signal import bspline
 
 class ImageToSoundscapeConverter:
-    def __init__(self, rows, columns, freq_lowest, freq_highest, sample_freq_Hz,
-                 total_time_sec, use_exponential, use_stereo, use_delay, use_fade,
-                 use_diffraction, use_bspline, speed_of_sound_ms, acoustical_size_of_head_m):
-        self.rows = rows
-        self.columns = columns
-        self.freq_highest = freq_highest
-        self.freq_lowest = freq_lowest
+    def __init__(self, image_array: np.array(), freq_lowest = 500, freq_highest = 5000, sample_freq_Hz = 44100,
+                 total_time_sec = 1.05, use_exponential = True, use_stereo = True, use_delay = True, use_fade = True,
+                 use_diffraction = True, use_bspline = True, speed_of_sound_ms = 340, acoustical_size_of_head_m = 0.2):
+        self.image = image_array
+        self.rows = image_array.shape[0]
+        self.columns = image_array.shape[1]
+        self.freq_highest = freq_highest # highest frequency
+        self.freq_lowest = freq_lowest # lowest frequency
         self.sample_freq_Hz = sample_freq_Hz
         self.total_time_sec = total_time_sec
-        self.use_exponential = use_exponential
-        self.use_stereo = use_stereo
-        self.use_delay = use_delay
+        self.use_exponential = use_exponential # using linear or exponential distributions of frequency
+        self.use_stereo = use_stereo 
+        self.use_delay = use_delay 
         self.use_fade = use_fade
-        self.use_diffraction = use_diffraction
-        self.use_bspline = use_bspline
+        self.use_diffraction = use_diffraction # First order frequency-dependent azimuth diffraction model
+        self.use_bspline = use_bspline 
         self.speed_of_sound_ms = speed_of_sound_ms
         self.acoustical_size_of_head_m  = acoustical_size_of_head_m
+        
+        
         self.sample_count = 2 * int(0.5 * sample_freq_Hz * total_time_sec)
         self.sample_per_column = int(self.sample_count/columns)
         self.scale = 0.5 / np.sqrt(rows)
+        self.time_per_sample_s = 1.0 / sample_freq_Hz  # Initialize time_per_sample_s 
+        self.card_number = 0
+        self.audio_data = AudioData(card_number=self.card_number, sample_freq_Hz=self.sample_freq_Hz, sample_count=self.sample_count, use_stereo=self.use_stereo)
+        self.sample_counts = np.arange(self.sample_count) # arrays of sample count
+        self.waveform_cache_left_channel = np.zeros((self.sample_count *rows))
+        self.waveform_cache_right_channel = np.zeros((self.sample_count *rows))
+        self.omege, self.phi0 = self.initialize_omega_phi0()
         
-        self.audio_data = np.zeros((self.sample_count, 2), dtype=np.int16)
-        self.omega = np.zeros(rows)
-        self.phi0 = np.zeros(rows)
-        self.wavefrom_cache_left_channel = np.zeros((self.sample_count, rows))
-        self.wavefrom_cache_right_channel = np.zeros((self.sample_count, rows))
-        
-        self._initialize()
-        
-    def _initialize(self):
-         #Set lin|exp (0|1) frequency distribution and random initial phase
+    def initialize_omega_phi0(self):
+         '''
+         initialize omega and phi0 values accrding to highest and lowest frequencies
+         '''
          if self.use_exponential:
-             self.omega = 2 * np.pi * self.freq_lowest * np.power(self.freq_highest / self.freq_lowest, np.linspace(0, 1, self.rows))
+             omega = 2 * np.pi * self.freq_lowest * np.power(self.freq_highest / self.freq_lowest, np.linspace(0, 1, self.rows))
          else:
-             self.omega = 2 * np.pi * self.freq_lowest + 2 * np.pi * (self.freq_highest - self.freq_lowest) * \
+             omega = 2 * np.pi * self.freq_lowest + 2 * np.pi * (self.freq_highest - self.freq_lowest) * \
                           np.linspace(0, 1, self.rows)
-         self.phi0 = 2 * np.pi * np.random.rand(self.rows)
-         self._init_waveform_cache_stereo()
-         
-    def _rnd(self):
-        return np.random.rand()
+         phi0 = 2 * np.pi * np.random.rand(self.rows)
+         return omega, phi0
+    
+    def random_no(self):
+        '''
+        generates random number between 0 and 1
+        '''
+        return round(np.random.rand(), 2)
     
     def _init_waveform_cache_stereo(self):
         # waveform cache
@@ -55,10 +63,10 @@ class ImageToSoundscapeConverter:
 
         for sample in range(self.sample_count):
             if self.use_bspline:
-                q = 1.0 * (sample % self.samples_per_column) / (self.samples_per_column - 1)
+                q = 1.0 * (sample % self.sample_per_column) / (self.sample_per_column - 1)
                 q2 = 0.5 * q**2
 
-            j = sample // self.samples_per_column
+            j = sample // self.sample_per_column
             if j > self.columns - 1:
                 j = self.columns - 1
 
@@ -69,7 +77,7 @@ class ImageToSoundscapeConverter:
             tr = tl
 
             if self.use_delay:
-                tr += x / self.speed_of_sound_m_s  # Time delay model
+                tr += x / self.speed_of_sound_ms  # Time delay model
 
             x = np.abs(x)
             sl, sr = 0.0, 0.0
@@ -109,22 +117,23 @@ class ImageToSoundscapeConverter:
             self.audio_data[sample, 1] = int(l)
             
             
-    def _calculate_a(self, im1, im2, im3, i, q, q2):
-        if self.use_bspline:
-            if im1 is None or im3 is None:
-                return im2[i]
-
-            f1 = (q2 - q + 0.5)
-            f2 = (0.5 + q - q**2)
-
-            if im1 is None:
-                return f1 * im2[i] + f2 * im3[i]
-            elif im3 is None:
-                return f1 * im1[i] + f2 * im2[i]
-            else:
-                return f1 * im1[i] + f2 * im2[i] + q2 * im3[i]
-        else:
-            return im2[i]
+    def calculate_a(self):
+        q = (self.sample_counts % self.sample_per_column) / (self.sample_per_column - 1)
+        q = np.tile(q,(columns, 1)) # Tiling to matches with columns
+        
+        q2 = 0.5 * q**2
+        q2 = np.tile(q2,(columns, 1))
+        
+        t = self.sample_counts * self.time_per_sample_s
+        t = np.tile(t,(columns, 1))
+        a = np.zeros_like(self.image)
+        
+        a[:, 0] = image[:, 0].reshape(-1, 1) * (1 - q2) + image[:, 1].reshape(-1, 1) * q2  # First column
+        a[: -1] = image[:, -1].reshape(-1, 1) * (q2 - q + 0.5) + image[:, -2].reshape(-1, 1) * (0.5 + q - q2)  # Last column
+        a[:, 1:-1] = image[:, :-2].reshape(-1,1) * (q2 - q + 0.5) +  image[:, 1:-1].reshape(-1, 1) * (0.5 + q - q * q) * + image[:, 2:].reshape(-1, 1) * q2
+        
+        return a
+                
     def _get_image_column(self, index):
         if 0 <= index < self.columns:
             return self.image[:, index]
@@ -144,3 +153,30 @@ class ImageToSoundscapeConverter:
 
     def init_waveform_cache_stereo(self):
         self._init_waveform_cache_stereo()
+        
+
+
+rows = 10
+columns = 10
+freq_lowest = 100
+freq_highest = 1000
+sample_freq_Hz = 44100
+total_time_s = 5
+use_exponential = True
+use_stereo = True
+use_delay = True
+use_fade = True
+use_diffraction = True
+use_bspline = True
+speed_of_sound_ms = 343  # Speed of sound in air at 20 degrees Celsius
+acoustical_size_of_head_m = 0.2
+image = np.random.rand(rows, columns) * 255 
+
+converter = ImageToSoundscapeConverter(image, freq_lowest, freq_highest, sample_freq_Hz,
+                                        total_time_s, use_exponential, use_stereo, use_delay,
+                                        use_fade, use_diffraction, use_bspline, speed_of_sound_ms,
+                                        acoustical_size_of_head_m)
+
+# converter.process(image)
+print(converter._rnd())
+print(converter.rnd())
