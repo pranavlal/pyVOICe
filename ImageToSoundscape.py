@@ -1,7 +1,7 @@
 import numpy as np
 from AudioData import AudioData
 from scipy.io.wavfile import write
-from scipy.signal import bspline
+from scipy.interpolate import RectBivariateSpline
 
 class ImageToSoundscapeConverter:
     def __init__(self, image_array: np.array(), freq_lowest = 500, freq_highest = 5000, sample_freq_Hz = 44100,
@@ -117,22 +117,18 @@ class ImageToSoundscapeConverter:
             self.audio_data[sample, 1] = int(l)
             
             
-    def calculate_a(self):
-        q = (self.sample_counts % self.sample_per_column) / (self.sample_per_column - 1)
-        q = np.tile(q,(columns, 1)) # Tiling to matches with columns
+    def bspline_interpolation(self):
+        # Generate a finer grid for interpolation
+        new_rows, new_cols = self.rows * 2, self.columns * 2
+        new_x = np.linspace(0, self.columns - 1, new_cols)
+        new_y = np.linspace(0, self.rows - 1, new_rows)
         
-        q2 = 0.5 * q**2
-        q2 = np.tile(q2,(columns, 1))
+        # Create B-spline interpolator
+        spline = RectBivariateSpline(range(self.rows), range(self.columns), self.image)
+        # Evaluate the B-spline at the new points
+        interpolated_image = spline(new_y, new_x)
         
-        t = self.sample_counts * self.time_per_sample_s
-        t = np.tile(t,(columns, 1))
-        a = np.zeros_like(self.image)
-        
-        a[:, 0] = image[:, 0].reshape(-1, 1) * (1 - q2) + image[:, 1].reshape(-1, 1) * q2  # First column
-        a[: -1] = image[:, -1].reshape(-1, 1) * (q2 - q + 0.5) + image[:, -2].reshape(-1, 1) * (0.5 + q - q2)  # Last column
-        a[:, 1:-1] = image[:, :-2].reshape(-1,1) * (q2 - q + 0.5) +  image[:, 1:-1].reshape(-1, 1) * (0.5 + q - q * q) * + image[:, 2:].reshape(-1, 1) * q2
-        
-        return a
+        return interpolated_image
                 
     def _get_image_column(self, index):
         if 0 <= index < self.columns:
