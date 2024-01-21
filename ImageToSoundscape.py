@@ -2,6 +2,7 @@ import numpy as np
 from AudioData import AudioData
 from scipy.io.wavfile import write
 from scipy.interpolate import RectBivariateSpline
+from scipy import signal
 
 class ImageToSoundscapeConverter:
     def __init__(self, image_array: np.array(), freq_lowest = 500, freq_highest = 5000, sample_freq_Hz = 44100,
@@ -129,12 +130,20 @@ class ImageToSoundscapeConverter:
         interpolated_image = spline(new_y, new_x)
         
         return interpolated_image
-                
-    def _get_image_column(self, index):
-        if 0 <= index < self.columns:
-            return self.image[:, index]
-        return None
-
+    
+    def second_order_filter(self, wave, t_values):
+        # Filter parameters
+        omega_n = 2 * np.pi * 2  # Natural frequency
+        zeta = 0.7  # Damping ratio
+        # Second-order filter transfer function
+        numerator = [omega_n**2]
+        denominator = [1, 2 * zeta * omega_n, omega_n**2]
+        sys = signal.TransferFunction(numerator, denominator)
+        # Apply the filter to the sine wave
+        t, filter_wave, _ = signal.lsim(sys, wave, t_values)
+        
+        return filter_wave
+        
     def process(self, image):
         if not self.use_stereo:
             self.process_mono(image)
