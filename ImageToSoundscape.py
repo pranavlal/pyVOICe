@@ -131,18 +131,33 @@ class ImageToSoundscapeConverter:
         
         return interpolated_image
     
-    def second_order_filter(self, wave, t_values):
+    def filter_wave(self, wave, t_values, second_order = True, azimuthal = False):
         # Filter parameters
         omega_n = 2 * np.pi * 2  # Natural frequency
         zeta = 0.7  # Damping ratio
         # Second-order filter transfer function
-        numerator = [omega_n**2]
-        denominator = [1, 2 * zeta * omega_n, omega_n**2]
+        if second_order:
+            numerator = [omega_n**2]
+            denominator = [1, 2 * zeta * omega_n, omega_n**2]
+        elif azimuthal:
+            # Frequency-dependent azimuth diffraction model
+            T = 0.1  # Time constant
+            numerator = [1]
+            denominator = [1, T]
+        else:
+            numerator = 1
+            denominator = 1
         sys = signal.TransferFunction(numerator, denominator)
         # Apply the filter to the sine wave
         t, filter_wave, _ = signal.lsim(sys, wave, t_values)
         
         return filter_wave
+
+    def fade_wave(self, wave, fade_factor = 0.2):
+        # Apply the fading model
+        wave = wave * fade_factor
+        return wave
+
         
     def process(self, image):
         if not self.use_stereo:
