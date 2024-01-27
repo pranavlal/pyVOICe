@@ -3,14 +3,14 @@ from AudioData import AudioData
 from scipy.io.wavfile import write
 from scipy.interpolate import RectBivariateSpline
 from scipy import signal
+import math
 
 class ImageToSoundscapeConverter:
-    def __init__(self, image_array: np.array(), freq_lowest = 500, freq_highest = 5000, sample_freq_Hz = 44100,
+    def __init__(self, rows: int, columns: int, freq_lowest = 500, freq_highest = 5000, sample_freq_Hz = 44100,
                  total_time_sec = 1.05, use_exponential = True, use_stereo = True, use_delay = True, use_fade = True,
-                 use_diffraction = True, use_bspline = True, speed_of_sound_ms = 340, acoustical_size_of_head_m = 0.2):
-        self.image = image_array
-        self.rows = image_array.shape[0]
-        self.columns = image_array.shape[1]
+                 use_diffraction = True, use_bspline = True, speed_of_sound_ms = 340, acoustical_size_of_head_m = 0.2, HIFI = True):
+        self.rows = rows
+        self.columns = columns
         self.freq_highest = freq_highest # highest frequency
         self.freq_lowest = freq_lowest # lowest frequency
         self.sample_freq_Hz = sample_freq_Hz
@@ -30,11 +30,25 @@ class ImageToSoundscapeConverter:
         self.scale = 0.5 / np.sqrt(rows)
         self.time_per_sample_s = 1.0 / sample_freq_Hz  # Initialize time_per_sample_s 
         self.card_number = 0
-        self.audio_data = AudioData(card_number=self.card_number, sample_freq_Hz=self.sample_freq_Hz, sample_count=self.sample_count, use_stereo=self.use_stereo)
+        self.audio_data = AudioData(card_number=self.card_number, sample_freq_Hz=self.sample_freq_Hz, 
+                                    sample_count=self.sample_count, use_stereo=self.use_stereo)
+        self.HIFI = HIFI
+        if self.HIFI:
+            self.sso = 0
+            self.ssm = 32768
+        else:
+            self.sso = 128
+            self.ssm = 128
+        
         self.sample_counts = np.arange(self.sample_count) # arrays of sample count
         self.waveform_cache_left_channel = np.zeros((self.sample_count *rows))
         self.waveform_cache_right_channel = np.zeros((self.sample_count *rows))
         self.omege, self.phi0 = self.initialize_omega_phi0()
+        self.tau1 = 0.5 / self.omega[rows-1]
+        self.tau2 = 0.25 * (self.tau1**2)
+        self.TwoPi = 2 * np.pi
+        self.stereo_left = []
+        self.stereo_right = []
         
     def initialize_omega_phi0(self):
          '''
@@ -54,82 +68,125 @@ class ImageToSoundscapeConverter:
         '''
         return round(np.random.rand(), 2)
     
-    def _init_waveform_cache_stereo(self):
-        # waveform cache
-        tau1 = 0.5 / self.omega[-1]
-        tau2 = 0.25 * tau1**2
-        q, q2 = 0.0, 0.0
-        yl, yr = 0.0, 0.0
-        zl, zr = 0.0, 0.0
-
-        for sample in range(self.sample_count):
-            if self.use_bspline:
-                q = 1.0 * (sample % self.sample_per_column) / (self.sample_per_column - 1)
-                q2 = 0.5 * q**2
-
-            j = sample // self.sample_per_column
-            if j > self.columns - 1:
-                j = self.columns - 1
-
-            r = 1.0 * sample / (self.sample_count - 1)  # Binaural attenuation/delay parameter
-            theta = (r - 0.5) * 2 * np.pi / 3
-            x = 0.5 * self.acoustical_size_of_head_m * (theta + np.sin(theta))
-            tl = sample * self.time_per_sample_s
-            tr = tl
-
-            if self.use_delay:
-                tr += x / self.speed_of_sound_ms  # Time delay model
-
-            x = np.abs(x)
-            sl, sr = 0.0, 0.0
-
-            im1 = self._get_image_column(j - 1) if j > 0 else None
-            im2 = self._get_image_column(j)
-            im3 = self._get_image_column(j + 1) if j < self.columns - 1 else None
-
-            for i in range(self.rows):
-                a = self._calculate_a(im1, im2, im3, i, q, q2)
-                sl += a * self.waveform_cache_left_channel[sample, i]
-                sr += a * self.waveform_cache_right_channel[sample, i]
-
-            if sample < self.sample_count // (5 * self.columns):
-                sl = (2.0 * self._rnd() - 1.0) / self.scale  # Left "click"
-
-            if tl < 0.0:
-                sl = 0.0
-
-            if tr < 0.0:
-                sr = 0.0
-
-            ypl, yl = yl, tau1 / self.time_per_sample_s + tau2 / (self.time_per_sample_s**2)
-            yl = (sl + yl * ypl + tau2 / self.time_per_sample_s * zl) / (1.0 + yl)
-            zl = (yl - ypl) / self.time_per_sample_s
-
-            ypr, yr = yr, tau1 / self.time_per_sample_s + tau2 / (self.time_per_sample_s**2)
-            yr = (sr + yr * ypr + tau2 / self.time_per_sample_s * zr) / (1.0 + yr)
-            zr = (yr - ypr) / self.time_per_sample_s
-
-            l = 0.5 + self.scale * 32768.0 * yl
-            l = min(max(l, -32768), 32767)
-            self.audio_data[sample, 0] = int(l)
-
-            l = 0.5 + self.scale * 32768.0 * yr
-            l = min(max(l, -32768), 32767)
-            self.audio_data[sample, 1] = int(l)
-            
-            
-    def bspline_interpolation(self):
-        # Generate a finer grid for interpolation
-        new_rows, new_cols = self.rows * 2, self.columns * 2
-        new_x = np.linspace(0, self.columns - 1, new_cols)
-        new_y = np.linspace(0, self.rows - 1, new_rows)
+    def process_image(self, image_array):
+        # Check for image size matches with the class object
+        if isinstance(image_array, np.ndarray):
+            raise ValueError("Image must be in array format")
+        if image_array.shape[0] == self.rows or image_array.shape[1] == self.columns:
+            raise ValueError(f"Input image size must{image_array.shape} match with class object {(self.rows, self.columns)}")
+        k = 0
+        b = 0
+        stereo_right = []
+        stereo_left = []
+        mono_audio = []
         
-        # Create B-spline interpolator
-        spline = RectBivariateSpline(range(self.rows), range(self.columns), self.image)
-        # Evaluate the B-spline at the new points
-        interpolated_image = spline(new_y, new_x)
-        
-        return interpolated_image
+        while k < self.sample_count:
+                if use_bspline:
+                    q, q2 = self.calculate_q(k)
+                    
+                j = int(k / self.sample_per_colums)
+                j = columns-1 if j > columns-1 else j        
+                
+                if self.use_stereo:
+                    tl = tr = k * self.time_per_sample_s
+                    r = 1.0 * k / (self.sample_count - 1)  # Binaural attenuation/delay parameter
+                    theta = (r - 0.5) * self.TwoPi / 3
+                    x = 0.5 * self.freq_highest * (theta + math.sin(theta))
+                    x = np.abs(x)
+                    sl = sr = 0.0
+                    hrtfl = hrtfr = 1.0
+                else:
+                    t = k * self.time_per_sample_s
+                if use_delay and self.use_stereo:
+                    tr = tr + x / self.speed_of_sound_ms  # Time delay model
+                
+                for i in range(0, self.rows):
+                    if self.use_diffraction and self.use_stereo:
+                        # First order frequency-dependent azimuth diffraction model
+                        hrtf = 1.0 if (self.TwoPi*self.speed_of_sound_ms/self.omega[i] > x) else self.TwoPi* self.speed_of_sound_ms/(x* self.omega[i])
+                        if theta < 0.0:
+                            hrtfl =  1.0
+                            hrtfr = hrtf
+                        else:
+                            hrtfl = hrtf
+                            hrtfr =  1.0
+                    if use_fade and self.use_stereo:
+                        # Simple frequency-independent relative fade model
+                        hrtfl *= (1.0 - 0.7 * r)
+                        hrtfr *= (0.3 + 0.7 * r)
+                        
+                    if use_bspline:
+                        pixel_row = image_array[i]
+                        pixel = self.bspline_interpolation(column= j, q = q, q2= q2, pixel = pixel_row)
+                    else:
+                        pixel = image_array[i][j]
+                        
+                    if self.use_stereo:
+                        sl = sl + hrtfl * pixel * math.sin(self.omega[i] * tl + self.phi0[i])
+                        sr = sr + hrtfr * pixel * math.sin(self.omega[i] * tr + self.phi0[i])
+                        sl = (2.0 * self.random_no() - 1.0) / self.scale if (k < self.sample_count / (5 * columns)) else sl  # Left "click"
+                        if tl < 0.0:
+                            sl = 0.0
+                        if tr < 0.0:
+                            sr = 0.0
+                        ypl = yl
+                        yl = self.tau1 / self.time_per_sample_s + self.tau2 / (self.time_per_sample_s * self.time_per_sample_s)
+                        yl = (sl + yl * ypl + self.tau2 / self.time_per_sample_s * zl) / (1.0 + yl)
+                        zl = (yl - ypl) / self.time_per_sample_s
+                        ypr = yr
+                        yr = self.tau1 / self.time_per_sample_s + self.tau2 / (self.time_per_sample_s * self.time_per_sample_s)
+                        yr = (sr + yr * ypr + self.tau2 / self.time_per_sample_s * zr) / (1.0 + yr)
+                        zr = (yr - ypr) / self.time_per_sample_s
+                        
+                        left_channel = self.sso + 0.5 + self.scale * self.ssm * yl
+                        if left_channel >= self.sso-1 + self.ssm:
+                            left_channel = self.sso-1 + self.ssm
+                        if left_channel < self.sso - self.ssm:
+                            left_channel = self.sso - self.ssm
+                    
+                        # Left channel
+                        stereo_left.append(left_channel)
+                        
+                        right_channel = self.sso + 0.5 + self.scale * self.ssm * yr
+                        if right_channel >= self.sso-1 + self.ssm:
+                            right_channel = self.sso-1 + self.ssm 
+                        if right_channel < self.sso - self.ssm:
+                            right_channel = self.sso - self.ssm
+                        stereo_right.append(right_channel)
+                    else:
+                        s += pixel * math.sin(self.omega[i] * t + self.phi0[i])
+                        yp = y
+                        y = self.tau1 / self.time_per_sample_s + self.tau2 / (self.time_per_sample_s * self.time_per_sample_s)
+                        y = (s + y * yp + self.tau2 / self.time_per_sample_s * z) / (1.0 + y)
+                        z = (y - yp) / self.time_per_sample_s
+                        channel = self.sso + 0.5 + self.scale * self.ssm * y  # y = 2nd order filtered s
+                        if channel >= self.sso-1 + self.ssm:
+                            channel = self.sso-1 + self.ssm
+                        if channel < self.sso - self.ssm:
+                            channel = self.sso - self.ssm
+                        mono_audio.append(channel)
+                    k = k + 1
+                    
+                return stereo_left, stereo_right, mono_audio
+                
+            
+    def calculate_q(self, k):
+        q = 1.0 * (k % self.sample_per_colums) / (self.sample_per_colums - 1)
+        q2 = 0.5 * q * q
+        return q, q2
+    
+    def bspline_interpolation(self, column, q, q2, pixel):
+        if column == 0:
+            return  (1.0 - q2) * pixel[column] + q2 * pixel[column + 1]
+        elif column == self.columns -1:
+            return (q2 - q + 0.5) * pixel[column-1] + (0.5 + q - q2) * pixel[column]
+        else:
+            return (q2 - q + 0.5) * pixel[column-1] + (0.5 + q - q * q) * pixel[column] + q2 * pixel[column+1]
+    
+    def fade(self, hrtfl, hrtfr, r):
+        # Simple frequency-independent relative fade model
+        hrtfl *= (1.0 - 0.7 * r)
+        hrtfr *= (0.3 + 0.7 * r)
     
     def filter_wave(self, wave, t_values, second_order = True, azimuthal = False):
         # Filter parameters
@@ -158,21 +215,6 @@ class ImageToSoundscapeConverter:
         wave = wave * fade_factor
         return wave
 
-        
-    def process(self, image):
-        if not self.use_stereo:
-            self.process_mono(image)
-        else:
-            self.process_stereo(image)
-
-    def process_mono(self, image):
-        raise NotImplementedError("Mono audio not implemented")
-
-    def process_stereo(self, image):
-        self.init_waveform_cache_stereo()
-
-    def init_waveform_cache_stereo(self):
-        self._init_waveform_cache_stereo()
         
 
 
