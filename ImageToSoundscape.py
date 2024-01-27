@@ -1,9 +1,17 @@
+'''
+Run this file to see the time required to convert an image to Soundscape.
+Actual implementation of Meijer's algorithm (C) P.B.L. Meijer 1996.
+Optimized for time complexity.
+'''
+
 import numpy as np
 from AudioData import AudioData
 from scipy.io.wavfile import write
 from scipy.interpolate import RectBivariateSpline
 from scipy import signal
 import math
+import time
+
 
 class ImageToSoundscapeConverter:
     def __init__(self, rows: int, columns: int, freq_lowest = 500, freq_highest = 5000, sample_freq_Hz = 44100,
@@ -39,14 +47,12 @@ class ImageToSoundscapeConverter:
         else:
             self.sso = 128
             self.ssm = 128
-        
+        self.TwoPi = 2 * np.pi
         self.sample_counts = np.arange(self.sample_count) # arrays of sample count
-        self.waveform_cache_left_channel = np.zeros((self.sample_count *rows))
-        self.waveform_cache_right_channel = np.zeros((self.sample_count *rows))
-        self.omege, self.phi0 = self.initialize_omega_phi0()
+        self.omega, self.phi0 = self.initialize_omega_phi0()
         self.tau1 = 0.5 / self.omega[rows-1]
         self.tau2 = 0.25 * (self.tau1**2)
-        self.TwoPi = 2 * np.pi
+        
         self.stereo_left = []
         self.stereo_right = []
         
@@ -54,12 +60,14 @@ class ImageToSoundscapeConverter:
          '''
          initialize omega and phi0 values accrding to highest and lowest frequencies
          '''
-         if self.use_exponential:
-             omega = 2 * np.pi * self.freq_lowest * np.power(self.freq_highest / self.freq_lowest, np.linspace(0, 1, self.rows))
-         else:
-             omega = 2 * np.pi * self.freq_lowest + 2 * np.pi * (self.freq_highest - self.freq_lowest) * \
-                          np.linspace(0, 1, self.rows)
-         phi0 = 2 * np.pi * np.random.rand(self.rows)
+         i = np.arange(0, self.rows)
+         
+         omega = self.TwoPi * (
+                    (self.freq_lowest + (self.freq_highest - self.freq_lowest) * i / (self.rows*2 - 1))
+                    if self.use_exponential
+                    else self.freq_lowest * np.power((self.freq_highest / self.freq_lowest), (1.0 * i / (self.rows *2 - 1)))
+                )
+         phi0 = self.TwoPi * np.fromiter((self.random_no() for _ in range(self.rows*2)), float)
          return omega, phi0
     
     def random_no(self):
@@ -70,21 +78,21 @@ class ImageToSoundscapeConverter:
     
     def process_image(self, image_array):
         # Check for image size matches with the class object
-        if isinstance(image_array, np.ndarray):
-            raise ValueError("Image must be in array format")
-        if image_array.shape[0] == self.rows or image_array.shape[1] == self.columns:
-            raise ValueError(f"Input image size must{image_array.shape} match with class object {(self.rows, self.columns)}")
+        # if isinstance(image_array, np.ndarray):
+        #     raise ValueError("Image must be in array format")
+        # if image_array.shape[0] == self.rows or image_array.shape[1] == self.columns:
+        #     raise ValueError(f"Input image size must{image_array.shape} match with class object {(self.rows, self.columns)}")
         k = 0
         b = 0
         stereo_right = []
         stereo_left = []
         mono_audio = []
-        
+        y = yl = yr = z = zl = zr = 0
         while k < self.sample_count:
                 if use_bspline:
                     q, q2 = self.calculate_q(k)
                     
-                j = int(k / self.sample_per_colums)
+                j = int(k / self.sample_per_column)
                 j = columns-1 if j > columns-1 else j        
                 
                 if self.use_stereo:
@@ -167,11 +175,11 @@ class ImageToSoundscapeConverter:
                         mono_audio.append(channel)
                     k = k + 1
                     
-                return stereo_left, stereo_right, mono_audio
+        return stereo_left, stereo_right, mono_audio
                 
             
     def calculate_q(self, k):
-        q = 1.0 * (k % self.sample_per_colums) / (self.sample_per_colums - 1)
+        q = 1.0 * (k % self.sample_per_column) / (self.sample_per_column - 1)
         q2 = 0.5 * q * q
         return q, q2
     
@@ -218,12 +226,12 @@ class ImageToSoundscapeConverter:
         
 
 
-rows = 10
-columns = 10
-freq_lowest = 100
-freq_highest = 1000
+rows = 64
+columns = 176
+freq_lowest = 500
+freq_highest = 5000
 sample_freq_Hz = 44100
-total_time_s = 5
+total_time_s = 1.01
 use_exponential = True
 use_stereo = True
 use_delay = True
@@ -232,13 +240,13 @@ use_diffraction = True
 use_bspline = True
 speed_of_sound_ms = 343  # Speed of sound in air at 20 degrees Celsius
 acoustical_size_of_head_m = 0.2
-image = np.random.rand(rows, columns) * 255 
+image = np.random.rand(rows, columns) * 255
 
-converter = ImageToSoundscapeConverter(image, freq_lowest, freq_highest, sample_freq_Hz,
+converter = ImageToSoundscapeConverter(rows,columns, freq_lowest, freq_highest, sample_freq_Hz,
                                         total_time_s, use_exponential, use_stereo, use_delay,
                                         use_fade, use_diffraction, use_bspline, speed_of_sound_ms,
                                         acoustical_size_of_head_m)
-
-# converter.process(image)
-print(converter._rnd())
-print(converter.rnd())
+start_time = time.time()
+left, right, mono = converter.process_image(image_array= image)
+end_time = time.time()
+print(f'Time to process image:{round((end_time - start_time), 2)} seconds')
