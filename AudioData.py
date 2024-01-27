@@ -15,19 +15,19 @@ class AudioData:
         self.sample_freq_Hz = sample_freq_Hz
         self.use_stereo = use_stereo
         self.verbose = False
-        self.sample_buffer = np.zeros((2 if use_stereo else 1, sample_count), dtype=np.uint16)
         self.volume = -1
         self.new_volume = -1
         
-    def save_to_wav_file(self, filename: str):
+    def save_to_wav_file(self, audio_data, filename: str):
         bytes_per_sample = 4 if self.use_stereo else 2
+        audio_data = np.array(audio_data)
         
         with wave.open(filename, 'wb') as fp:
             fp.setnchannels(2 if self.use_stereo else 1)
             fp.setsampwidth(bytes_per_sample)
             fp.setframerate(self.sample_freq_Hz)
             fp.setnframes(self.sample_count)
-            fp.writeframes(self.sample_buffer.tobytes())
+            fp.writeframes(audio_data.tobytes())
             
     def play(self):
         self.update_volume()
