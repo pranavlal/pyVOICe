@@ -8,6 +8,7 @@ import tty
 import curses
 import time
 from enum import Enum
+from evdev import InputDevice, categorize, ecodes
 import math
 
 class InputType(Enum):
@@ -218,47 +219,47 @@ class KeyboardInput:
             print("KeyEventMap: event_code =", event_code)
 
         ch = 0
-        if event_code in [KEY_A, KEY_LEFT, KEY_BACK, KEY_STOP, KEY_F1]:
+        if event_code in [ecodes.KEY_A, ecodes.KEY_LEFT, ecodes.KEY_BACK, ecodes.KEY_STOP, ecodes.KEY_F1]:
             ch = MenuKeys.PreviousValue
-        elif event_code in [KEY_S, KEY_DOWN, KEY_FORWARD, KEY_NEXTSONG, KEY_F3]:
+        elif event_code in [ecodes.KEY_S, ecodes.KEY_DOWN, ecodes.KEY_FORWARD, ecodes.KEY_NEXTSONG, ecodes.KEY_F3]:
             ch = MenuKeys.NextOption
-        elif event_code in [KEY_D, KEY_RIGHT, KEY_PLAYPAUSE, KEY_PLAY, KEY_PAUSE, BTN_RIGHT]:
+        elif event_code in [ecodes.KEY_D, ecodes.KEY_RIGHT, ecodes.KEY_PLAYPAUSE, ecodes.KEY_PLAY, ecodes.KEY_PAUSE, BTN_RIGHT]:
             ch = MenuKeys.NextValue
-        elif event_code in [KEY_W, KEY_UP, KEY_PREVIOUSSONG, KEY_REWIND, KEY_HOME]:
+        elif event_code in [ecodes.KEY_W, ecodes.KEY_UP, ecodes.KEY_PREVIOUSSONG, ecodes.KEY_REWIND, ecodes.KEY_HOME]:
             ch = MenuKeys.PreviousOption
-        elif event_code in [KEY_LINEFEED, KEY_KPENTER, KEY_SPACE, BTN_LEFT]:
+        elif event_code in [ecodes.KEY_LINEFEED, ecodes.KEY_KPENTER, ecodes.KEY_SPACE, BTN_LEFT]:
             ch = MenuKeys.CycleValue
-        elif event_code in [KEY_0, KEY_KP0, KEY_MUTE, KEY_NUMERIC_0]:
+        elif event_code in [ecodes.KEY_0, ecodes.KEY_KP0, ecodes.KEY_MUTE, ecodes.KEY_NUMERIC_0]:
             ch = ord('0')
-        elif event_code in [KEY_1, KEY_KP1]:
+        elif event_code in [ecodes.KEY_1, ecodes.KEY_KP1]:
             ch = ord('1')
-        elif event_code in [KEY_2, KEY_KP2]:
+        elif event_code in [ecodes.KEY_2, ecodes.KEY_KP2]:
             ch = ord('2')
-        elif event_code in [KEY_3, KEY_KP3]:
+        elif event_code in [ecodes.KEY_3, ecodes.KEY_KP3]:
             ch = ord('3')
-        elif event_code in [KEY_4, KEY_KP4]:
+        elif event_code in [ecodes.KEY_4, ecodes.KEY_KP4]:
             ch = ord('4')
-        elif event_code in [KEY_5, KEY_KP5]:
+        elif event_code in [ecodes.KEY_5, ecodes.KEY_KP5]:
             ch = ord('5')
-        elif event_code in [KEY_6, KEY_KP6]:
+        elif event_code in [ecodes.KEY_6, ecodes.KEY_KP6]:
             ch = ord('6')
-        elif event_code in [KEY_7, KEY_KP7]:
+        elif event_code in [ecodes.KEY_7, ecodes.KEY_KP7]:
             ch = ord('7')
-        elif event_code in [KEY_8, KEY_KP8]:
+        elif event_code in [ecodes.KEY_8, ecodes.KEY_KP8]:
             ch = ord('8')
-        elif event_code in [KEY_9, KEY_KP9]:
+        elif event_code in [ecodes.KEY_9, ecodes.KEY_KP9]:
             ch = ord('9')
-        elif event_code in [KEY_NUMERIC_STAR, KEY_KPASTERISK]:
+        elif event_code in [ecodes.KEY_NUMERIC_STAR, ecodes.KEY_KPASTERISK]:
             ch = ord('*')
-        elif event_code in [KEY_SLASH, KEY_KPSLASH]:
+        elif event_code in [ecodes.KEY_SLASH, ecodes.KEY_KPSLASH]:
             ch = ord('/')
-        elif event_code in [KEY_EQUAL, KEY_KPEQUAL]:
+        elif event_code in [ecodes.KEY_EQUAL, ecodes.KEY_KPEQUAL]:
             ch = ord('=')
-        elif event_code in [KEY_DOT, KEY_KPDOT, KEY_KPCOMMA, KEY_KPJPCOMMA, KEY_BACKSPACE, KEY_DC]:
+        elif event_code in [ecodes.KEY_DOT, ecodes.KEY_KPDOT, ecodes.KEY_KPCOMMA, ecodes.KEY_KPJPCOMMA, ecodes.KEY_BACKSPACE, ecodes.KEY_DC]:
             ch = ord('.')
-        elif event_code in [KEY_KPPLUS, KEY_VOLUMEUP]:
+        elif event_code in [ecodes.KEY_KPPLUS, ecodes.KEY_VOLUMEUP]:
             ch = ord('+')
-        elif event_code in [KEY_MINUS, KEY_KPMINUS, KEY_VOLUMEDOWN]:
+        elif event_code in [ecodes.KEY_MINUS, ecodes.KEY_KPMINUS, ecodes.KEY_VOLUMEDOWN]:
             ch = ord('-')
 
         return ch
