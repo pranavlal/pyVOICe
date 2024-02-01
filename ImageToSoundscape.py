@@ -231,7 +231,7 @@ columns = 176
 freq_lowest = 500
 freq_highest = 5000
 sample_freq_Hz = 44100
-total_time_s = 1.01
+total_time_s = 1.02
 use_exponential = True
 use_stereo = True
 use_delay = True
@@ -246,7 +246,9 @@ converter = ImageToSoundscapeConverter(rows,columns, freq_lowest, freq_highest, 
                                         total_time_s, use_exponential, use_stereo, use_delay,
                                         use_fade, use_diffraction, use_bspline, speed_of_sound_ms,
                                         acoustical_size_of_head_m)
+
 start_time = time.time()
 left, right, mono = converter.process_image(image_array= image)
+converter.audio_data.save_to_wav_file(left+ right, 'audio.wav')
 end_time = time.time()
 print(f'Time to process image:{round((end_time - start_time), 2)} seconds')
