@@ -3,7 +3,8 @@ import threading
 import wave
 import numpy as np
 import os
-import winsound
+if os.name == 'nt':  # Windows
+    import winsound
 import time
 
 class AudioData:
