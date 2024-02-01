@@ -20,7 +20,7 @@ class RaspiVoice:
 
         self.init()
 
-        self.i2ssConverter = ImageToSoundscapeConverter(
+        self.ImgTossConverter = ImageToSoundscapeConverter(
             self.rows, self.columns, opt.freq_lowest, opt.freq_highest,
             opt.sample_freq_Hz, opt.total_time_s, opt.use_exponential,
             opt.use_stereo, opt.use_delay, opt.use_fade, opt.use_diffraction,
