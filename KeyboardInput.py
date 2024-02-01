@@ -223,11 +223,11 @@ class KeyboardInput:
             ch = MenuKeys.PreviousValue
         elif event_code in [ecodes.KEY_S, ecodes.KEY_DOWN, ecodes.KEY_FORWARD, ecodes.KEY_NEXTSONG, ecodes.KEY_F3]:
             ch = MenuKeys.NextOption
-        elif event_code in [ecodes.KEY_D, ecodes.KEY_RIGHT, ecodes.KEY_PLAYPAUSE, ecodes.KEY_PLAY, ecodes.KEY_PAUSE, BTN_RIGHT]:
+        elif event_code in [ecodes.KEY_D, ecodes.KEY_RIGHT, ecodes.KEY_PLAYPAUSE, ecodes.KEY_PLAY, ecodes.KEY_PAUSE, ecodes.BTN_RIGHT]:
             ch = MenuKeys.NextValue
         elif event_code in [ecodes.KEY_W, ecodes.KEY_UP, ecodes.KEY_PREVIOUSSONG, ecodes.KEY_REWIND, ecodes.KEY_HOME]:
             ch = MenuKeys.PreviousOption
-        elif event_code in [ecodes.KEY_LINEFEED, ecodes.KEY_KPENTER, ecodes.KEY_SPACE, BTN_LEFT]:
+        elif event_code in [ecodes.KEY_LINEFEED, ecodes.KEY_KPENTER, ecodes.KEY_SPACE, ecodes.BTN_LEFT]:
             ch = MenuKeys.CycleValue
         elif event_code in [ecodes.KEY_0, ecodes.KEY_KP0, ecodes.KEY_MUTE, ecodes.KEY_NUMERIC_0]:
             ch = ord('0')
